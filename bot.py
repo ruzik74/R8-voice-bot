@@ -4,7 +4,6 @@ from discord.ui import View, Button, Select
 import asyncio
 
 # ✅ ВСТАВЬ СЮДА СВОЙ ТОКЕН ДЛЯ ЛОКАЛЬНОГО ЗАПУСКА
-TOKEN = " "  
 GUILD_ID = 1355204242595516841
 CATEGORY_ID = 1355204243191238851
 TEMP_CHANNEL_ID = 1355208133709926643
