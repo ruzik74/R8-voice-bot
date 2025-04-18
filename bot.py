@@ -1,10 +1,18 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button, Select
+from discord.ui import View, Button
 import asyncio
+import os
 
-# ✅ ВСТАВЬ СЮДА СВОЙ ТОКЕН ДЛЯ ЛОКАЛЬНОГО ЗАПУСКА
-TOKEN =" "
+# ✅ Если запускаешь локально, раскомментируй строку ниже и создай .env файл
+# from dotenv import load_dotenv
+# load_dotenv()
+
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+
+if not TOKEN:
+    raise ValueError("❌ Не указан токен! Убедитесь, что DISCORD_BOT_TOKEN задан в переменных окружения.")
+
 GUILD_ID = 1355204242595516841
 CATEGORY_ID = 1355204243191238851
 TEMP_CHANNEL_ID = 1355208133709926643
@@ -70,6 +78,22 @@ class VoiceControlPanel(View):
         except Exception as e:
             print(f"Ошибка при удалении: {e}")
 
+    @discord.ui.button(label="⚙ Лимит участников", style=discord.ButtonStyle.blurple)
+    async def set_limit_menu(self, interaction: discord.Interaction, button: Button):
+        class LimitSelect(discord.ui.Select):
+            def __init__(self):
+                options = [discord.SelectOption(label=str(i), value=str(i)) for i in range(1, 11)]
+                super().__init__(placeholder="Выберите лимит от 1 до 10", min_values=1, max_values=1, options=options)
+
+            async def callback(self, interaction2: discord.Interaction):
+                limit = int(self.values[0])
+                await self.channel.edit(user_limit=limit)
+                await interaction2.response.send_message(f"✅ Лимит установлен: {limit}", ephemeral=True)
+
+        view = View()
+        view.add_item(LimitSelect())
+        await interaction.response.send_message("Выберите лимит:", view=view, ephemeral=True)
+
     @discord.ui.button(label="✏ Переименовать", style=discord.ButtonStyle.blurple)
     async def rename_channel(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("Введите новое название для голосового канала:", ephemeral=True)
@@ -88,34 +112,9 @@ class VoiceControlPanel(View):
         except asyncio.TimeoutError:
             await interaction.followup.send("❌ Время ожидания истекло.", ephemeral=True)
 
-    @discord.ui.button(label="🎚 Выбрать лимит", style=discord.ButtonStyle.blurple)
-    async def choose_limit(self, interaction: discord.Interaction, button: Button):
-        class LimitSelect(discord.ui.Select):
-            def __init__(self):
-                options = [discord.SelectOption(label=str(i), value=str(i)) for i in range(1, 11)]
-                super().__init__(placeholder="Выберите лимит участников", options=options)
-
-            async def callback(self, select_interaction: discord.Interaction):
-                limit = int(self.values[0])
-                await self.view.channel.edit(user_limit=limit)
-                channel_limits[self.view.channel.id] = limit
-                await select_interaction.response.send_message(f"✅ Лимит установлен: {limit}", ephemeral=True)
-
-        class LimitView(View):
-            def __init__(self, channel):
-                super().__init__(timeout=30)
-                self.channel = channel
-                self.add_item(LimitSelect())
-
-        await interaction.response.send_message(
-            "Выберите лимит участников из выпадающего меню:", 
-            view=LimitView(self.channel), 
-            ephemeral=True
-        )
-
 @bot.event
 async def on_ready():
-    print(f"Бот {bot.user.name} запущен!")
+    print(f"✅ Бот {bot.user.name} запущен!")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
