@@ -4,8 +4,12 @@ from discord.ui import View, Button, Modal, TextInput
 import asyncio
 import os
 from discord.ui import Select
+from keep_alive import keep_alive # NEW
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN") or "YOUR_BOT_TOKEN"
+
+keep_alive() # NEW
+
 GUILD_ID = 1355204242595516841
 CATEGORY_ID = 1355204243191238851
 TEMP_CHANNEL_ID = 1355208133709926643
