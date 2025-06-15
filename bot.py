@@ -4,23 +4,21 @@ from discord.ui import View, Button, Modal, TextInput
 import asyncio
 import os
 from discord.ui import Select
-from keep_alive import keep_alive # NEW
+from keep_alive import keep_alive
 
-TOKEN = os.getenv("DISCORD_BOT_TOKEN") or "YOUR_BOT_TOKEN"
+TOKEN = os.getenv("DISCORD_BOT_TOKEN") or ""YOUR_BOT_TOKEN"
 
-keep_alive() # NEW
+keep_alive()
 
 GUILD_ID = 1355204242595516841
 CATEGORY_ID = 1355204243191238851
 TEMP_CHANNEL_ID = 1355208133709926643
 CONTROL_CHANNEL_ID = 1357392366599802971
 
-# Временные структуры
 temp_channels = {}
 channel_limits = {}
 message_control_map = {}
 
-# Интенты
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -53,35 +51,48 @@ class NicknameInputModal(Modal):
     async def on_submit(self, interaction):
         if not await VoiceChannelCheck.check_user_in_channel(interaction, self.voice_channel):
             return
+
         query = self.children[0].value.lower()
         source = interaction.guild.members if self.action == "Разблокировать" else self.voice_channel.members
-        target = discord.utils.find(lambda m: m.name.lower()==query or m.display_name.lower()==query, source)
+        target = discord.utils.find(lambda m: m.name.lower() == query or m.display_name.lower() == query, source)
+
         if not target:
             await interaction.response.send_message("❌ Не найден.", ephemeral=True)
             return
+
         if self.action == "Заблокировать":
             role = await get_blocked_role(interaction.guild)
             await target.add_roles(role)
             await self.voice_channel.set_permissions(target, connect=False)
             await asyncio.sleep(1)
-            try: await target.move_to(None)
-            except: pass
+            try:
+                await target.move_to(None)
+            except:
+                pass
             await interaction.response.send_message(f"🔒 {target.mention}", ephemeral=True)
+
         elif self.action == "Разблокировать":
             role = await get_blocked_role(interaction.guild)
             await target.remove_roles(role)
             await self.voice_channel.set_permissions(target, overwrite=None)
             await interaction.response.send_message(f"🔓 {target.mention}", ephemeral=True)
+
         elif self.action == "Кикнуть":
-            try: await target.move_to(None); await interaction.response.send_message(f"⚔️ {target.mention}", ephemeral=True)
-            except: await interaction.response.send_message("❌", ephemeral=True)
+            try:
+                await target.move_to(None)
+                await interaction.response.send_message(f"⚔️ {target.mention}", ephemeral=True)
+            except:
+                await interaction.response.send_message("❌ Не удалось кикнуть.", ephemeral=True)
+
         elif self.action == "Передать":
             try:
                 await self.voice_channel.set_permissions(self.user, overwrite=None)
                 await self.voice_channel.set_permissions(target, connect=True, manage_channels=True)
-                panel = message_control_map.get(self.voice_channel.id)
-                if panel and isinstance(panel.view, VoiceControlPanel):
-                    panel.view.creator = target
+                panel_msg = message_control_map.get(self.voice_channel.id)
+                if panel_msg and isinstance(panel_msg, discord.Message):
+                    new_view = VoiceControlPanel(self.voice_channel, control_message_id=panel_msg.id, creator=target)
+                    await panel_msg.edit(view=new_view)
+                    message_control_map[self.voice_channel.id] = panel_msg
                 await interaction.response.send_message(f"👑 Теперь {target.mention} — владелец канала.", ephemeral=True)
             except Exception as e:
                 await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
