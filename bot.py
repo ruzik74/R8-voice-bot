@@ -4,21 +4,23 @@ from discord.ui import View, Button, Modal, TextInput
 import asyncio
 import os
 from discord.ui import Select
-from keep_alive import keep_alive  # NEW
+from keep_alive import keep_alive # NEW
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN") or "YOUR_BOT_TOKEN"
 
-keep_alive()  # NEW
+keep_alive() # NEW
 
 GUILD_ID = 1355204242595516841
 CATEGORY_ID = 1355204243191238851
 TEMP_CHANNEL_ID = 1355208133709926643
 CONTROL_CHANNEL_ID = 1357392366599802971
 
+# Временные структуры
 temp_channels = {}
 channel_limits = {}
 message_control_map = {}
 
+# Интенты
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -40,14 +42,6 @@ class VoiceChannelCheck:
             return False
         return True
 
-    @staticmethod
-    async def has_channel_control(interaction, channel):
-        overwrite = channel.overwrites_for(interaction.user)
-        if not overwrite.manage_channels:
-            await interaction.response.send_message("❌ У вас нет прав для управления этим каналом.", ephemeral=True)
-            return False
-        return await VoiceChannelCheck.check_user_in_channel(interaction, channel)
-
 class NicknameInputModal(Modal):
     def __init__(self, action, voice_channel, user):
         super().__init__(title=action)
@@ -61,51 +55,36 @@ class NicknameInputModal(Modal):
             return
         query = self.children[0].value.lower()
         source = interaction.guild.members if self.action == "Разблокировать" else self.voice_channel.members
-        target = discord.utils.find(lambda m: m.name.lower() == query or m.display_name.lower() == query, source)
+        target = discord.utils.find(lambda m: m.name.lower()==query or m.display_name.lower()==query, source)
         if not target:
             await interaction.response.send_message("❌ Не найден.", ephemeral=True)
             return
-
         if self.action == "Заблокировать":
             role = await get_blocked_role(interaction.guild)
             await target.add_roles(role)
             await self.voice_channel.set_permissions(target, connect=False)
             await asyncio.sleep(1)
-            try:
-                await target.move_to(None)
-            except:
-                pass
+            try: await target.move_to(None)
+            except: pass
             await interaction.response.send_message(f"🔒 {target.mention}", ephemeral=True)
-
         elif self.action == "Разблокировать":
             role = await get_blocked_role(interaction.guild)
             await target.remove_roles(role)
             await self.voice_channel.set_permissions(target, overwrite=None)
             await interaction.response.send_message(f"🔓 {target.mention}", ephemeral=True)
-
         elif self.action == "Кикнуть":
-            try:
-                await target.move_to(None)
-                await interaction.response.send_message(f"⚔️ {target.mention}", ephemeral=True)
-            except:
-                await interaction.response.send_message("❌", ephemeral=True)
-
+            try: await target.move_to(None); await interaction.response.send_message(f"⚔️ {target.mention}", ephemeral=True)
+            except: await interaction.response.send_message("❌", ephemeral=True)
         elif self.action == "Передать":
             try:
-                await self.voice_channel.set_permissions(self.user, manage_channels=False)
-                await self.voice_channel.set_permissions(target,
-                    connect=True, view_channel=True,
-                    manage_channels=True, move_members=True, mute_members=True, speak=True)
-
-                msg = message_control_map.get(self.voice_channel.id)
-                if msg:
-                    for child in msg.components:
-                        if isinstance(child, VoiceControlPanel):
-                            child.creator = target
-                            break
-                await interaction.response.send_message(f"👑 Права переданы {target.mention}", ephemeral=True)
+                await self.voice_channel.set_permissions(self.user, overwrite=None)
+                await self.voice_channel.set_permissions(target, connect=True, manage_channels=True)
+                panel = message_control_map.get(self.voice_channel.id)
+                if panel and isinstance(panel.view, VoiceControlPanel):
+                    panel.view.creator = target
+                await interaction.response.send_message(f"👑 Теперь {target.mention} — владелец канала.", ephemeral=True)
             except Exception as e:
-                await interaction.response.send_message(f"❌ Ошибка при передаче: {e}", ephemeral=True)
+                await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
 
 class VoiceControlPanel(View):
     def __init__(self, channel, control_message_id=None, creator=None):
@@ -117,7 +96,10 @@ class VoiceControlPanel(View):
         self.creator = creator
 
     async def interaction_check(self, interaction):
-        return await VoiceChannelCheck.has_channel_control(interaction, self.channel)
+        if interaction.user != self.creator:
+            await interaction.response.send_message("❌ У вас нет прав для управления этим каналом.", ephemeral=True)
+            return False
+        return await VoiceChannelCheck.check_user_in_channel(interaction, self.channel)
 
     @discord.ui.button(label="🔒", style=discord.ButtonStyle.gray)
     async def toggle_lock(self, interaction, button: Button):
@@ -145,14 +127,12 @@ class VoiceControlPanel(View):
 
     @discord.ui.button(label="🔇", style=discord.ButtonStyle.gray)
     async def mute_all(self, interaction, button):
-        for m in self.channel.members:
-            await m.edit(mute=True)
+        for m in self.channel.members: await m.edit(mute=True)
         await interaction.response.send_message("🔇", ephemeral=True)
 
     @discord.ui.button(label="🔊", style=discord.ButtonStyle.gray)
     async def unmute_all(self, interaction, button):
-        for m in self.channel.members:
-            await m.edit(mute=False)
+        for m in self.channel.members: await m.edit(mute=False)
         await interaction.response.send_message("🔊", ephemeral=True)
 
     @discord.ui.button(label="🗑", style=discord.ButtonStyle.danger)
@@ -166,28 +146,25 @@ class VoiceControlPanel(View):
                     await msg.delete()
                 message_control_map.pop(self.channel.id, None)
             await self.channel.delete()
-        except:
-            pass
+        except: pass
 
     @discord.ui.button(label="⚙️", style=discord.ButtonStyle.blurple)
     async def limit(self, interaction, button):
         class LimitSelect(Select):
             def __init__(self, parent):
-                opts = [discord.SelectOption(label=str(i), value=str(i)) for i in range(1, 11)]
+                opts = [discord.SelectOption(label=str(i), value=str(i)) for i in range(1,11)]
                 super().__init__(placeholder="⚙️", min_values=1, max_values=1, options=opts)
                 self.parent = parent
             async def callback(self2, inter):
                 await self2.parent.channel.edit(user_limit=int(self2.values[0]))
                 await inter.response.send_message("⚙️", ephemeral=True)
-        view = View()
-        view.add_item(LimitSelect(self))
-        await interaction.response.send_message("Выберите лимит участников:", view=view, ephemeral=True)
+        view = View(); view.add_item(LimitSelect(self)); await interaction.response.send_message("Выберите лимит участников:", view=view, ephemeral=True)
 
     @discord.ui.button(label="✏️", style=discord.ButtonStyle.blurple)
     async def rename(self, interaction, button):
         await interaction.response.send_message("✏️ Введите новое название голосового канала в чат.", ephemeral=True)
         try:
-            msg = await bot.wait_for('message', check=lambda m: m.author == interaction.user and m.channel == interaction.channel, timeout=60)
+            msg = await bot.wait_for('message', check=lambda m: m.author==interaction.user and m.channel==interaction.channel, timeout=60)
             if msg.content.strip():
                 await self.channel.edit(name=msg.content.strip())
                 await interaction.followup.send("✅ Канал переименован.", ephemeral=True)
@@ -217,20 +194,16 @@ class VoiceControlPanel(View):
         await interaction.response.send_modal(NicknameInputModal("Передать", self.channel, interaction.user))
 
 @bot.event
-async def on_ready():
-    print(f"✅ {bot.user.name} запущен!")
+async def on_ready(): print(f"✅ {bot.user.name} запущен!")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
     if after.channel and after.channel.id == TEMP_CHANNEL_ID:
-        guild = bot.get_guild(GUILD_ID)
-        category = guild.get_channel(CATEGORY_ID)
+        guild = bot.get_guild(GUILD_ID); category = guild.get_channel(CATEGORY_ID)
         if category:
             overwrites = {guild.default_role: discord.PermissionOverwrite(connect=True, view_channel=True), member: discord.PermissionOverwrite(connect=True, manage_channels=True)}
             temp = await guild.create_voice_channel(name=f"🔊 {member.display_name}", category=category, overwrites=overwrites)
-            await member.move_to(temp)
-            temp_channels[temp.id] = temp
-            channel_limits[temp.id] = 10
+            await member.move_to(temp); temp_channels[temp.id]=temp; channel_limits[temp.id]=10
             ctrl = guild.get_channel(CONTROL_CHANNEL_ID)
             if ctrl:
                 embed = discord.Embed(
@@ -245,20 +218,17 @@ async def on_voice_state_update(member, before, after):
                     color=discord.Color.dark_embed()
                 )
                 msg = await ctrl.send(embed=embed, view=VoiceControlPanel(temp, creator=member))
-                message_control_map[temp.id] = msg
-
+                message_control_map[temp.id]=msg
     if before.channel and before.channel.id in temp_channels and not before.channel.members:
         try:
             if before.channel.id in message_control_map:
                 try:
                     await message_control_map[before.channel.id].delete()
-                except:
-                    pass
+                except: pass
                 del message_control_map[before.channel.id]
             await before.channel.delete()
             del temp_channels[before.channel.id]
             del channel_limits[before.channel.id]
-        except:
-            pass
+        except: pass
 
 bot.run(TOKEN)
