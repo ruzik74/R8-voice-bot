@@ -6,7 +6,7 @@ import os
 from discord.ui import Select
 from keep_alive import keep_alive
 
-TOKEN = os.getenv("DISCORD_BOT_TOKEN") or ""YOUR_BOT_TOKEN"
+TOKEN = os.getenv("DISCORD_BOT_TOKEN") or "YOUR_BOT_TOKEN"
 
 keep_alive()
 
